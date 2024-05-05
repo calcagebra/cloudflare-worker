@@ -10,6 +10,7 @@ module.exports = {
         library: 'calcagebra',
         libraryTarget: 'umd'
     },
+    devtool: false,
     plugins: [
         new WasmPackPlugin({
             crateDirectory: path.resolve(__dirname, ".")
