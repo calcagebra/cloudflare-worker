@@ -5,10 +5,25 @@ const WasmPackPlugin = require("@wasm-tool/wasm-pack-plugin");
 module.exports = {
     entry: './index.js',
     output: {
-        path: path.resolve(__dirname, 'dist'),
-        filename: 'index.js',
+        path: path.resolve(__dirname),
+        filename: 'calcagebra.js',
         library: 'calcagebra',
         libraryTarget: 'umd'
+    },
+    module: {
+        rules: [
+            {
+                test: /\.ts$/,
+                loader: 'ts-loader',
+                options: {
+                    configFile: 'tsconfig.json',
+                },
+            },
+            {
+                test: /\.wasm$/,
+                type: "asset/inline",
+            },
+        ],
     },
     devtool: false,
     plugins: [
