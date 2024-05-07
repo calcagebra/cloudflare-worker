@@ -14,7 +14,13 @@ use lexer::Lexer;
 
 use crate::{interpreter::Interpreter, parser::Parser};
 
-#[wasm_bindgen]
+use worker::*;
+
+#[event(fetch)]
+async fn main(mut req: Request, env: Env, ctx: Context) -> Result<Response> {
+    Response::ok(run(req.text().await.unwrap()))
+}
+
 pub fn run(contents: String) -> String {
     std::io::set_output_capture(Some(Default::default()));
     let tokens = Lexer::new(&contents).tokens();

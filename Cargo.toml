@@ -9,7 +9,8 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 plotters = "0.3.6"
 rand = "0.8.5"
-wasm-bindgen = "0.2.92"
+textplots = "0.8.6"
+worker = "0.2.0"
 
 [profile.release]
 strip = true
