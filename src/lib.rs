@@ -9,7 +9,6 @@ mod token;
 
 use std::sync::Arc;
 
-use wasm_bindgen::prelude::*;
 use lexer::Lexer;
 
 use crate::{interpreter::Interpreter, parser::Parser};
@@ -17,8 +16,14 @@ use crate::{interpreter::Interpreter, parser::Parser};
 use worker::*;
 
 #[event(fetch)]
-async fn main(mut req: Request, env: Env, ctx: Context) -> Result<Response> {
-    Response::ok(run(req.text().await.unwrap()))
+async fn main(mut req: Request, _env: Env, _ctx: Context) -> Result<Response> {
+    let cors = Cors::default()
+        .with_origins(["*"])
+        .with_allowed_headers(["*"]);
+
+    let res = Response::ok(run(req.text().await.unwrap()));
+
+    res?.with_cors(&cors)
 }
 
 pub fn run(contents: String) -> String {
