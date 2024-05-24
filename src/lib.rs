@@ -19,7 +19,8 @@ use worker::*;
 #[derive(Debug, Deserialize)]
 pub struct RequestBody {
     code: String,
-    debug: bool
+    debug: bool,
+    globals: Option<bool>,
 }
 
 #[event(fetch)]
@@ -29,6 +30,19 @@ async fn main(mut req: Request, _env: Env, _ctx: Context) -> Result<Response> {
         .with_allowed_headers(["*"]);
 
     let json = req.json::<RequestBody>().await.unwrap();
+
+    if json.globals.is_some() && json.globals.unwrap() {
+        let globals = Interpreter::new()
+            .init_globals()
+            .variables
+            .iter()
+            .map(|(a, b)| format!("{a} {b}\n"))
+            .collect::<Vec<_>>().join("");
+
+        let res = Response::ok(globals);
+
+        return res?.with_cors(&cors);
+    }
 
     let res = Response::ok(run(json.code, json.debug));
 
