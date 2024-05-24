@@ -19,34 +19,40 @@ use worker::*;
 #[derive(Debug, Deserialize)]
 pub struct RequestBody {
     code: String,
-    debug: bool,
-    globals: Option<bool>,
+    debug: bool
 }
 
 #[event(fetch)]
-async fn main(mut req: Request, _env: Env, _ctx: Context) -> Result<Response> {
-    let cors = Cors::default()
-        .with_origins(["*"])
-        .with_allowed_headers(["*"]);
+async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
+    let router = Router::new();
 
-    let json = req.json::<RequestBody>().await.unwrap();
+    router
+        .post_async("/", |mut req, _env| async move {
+            let cors = Cors::default()
+                .with_origins(["*"])
+                .with_allowed_headers(["*"]);
+            let json = req.json::<RequestBody>().await.unwrap();
+            let res = Response::ok(run(json.code, json.debug));
 
-    if json.globals.is_some() && json.globals.unwrap() {
-        let globals = Interpreter::new()
-            .init_globals()
-            .variables
-            .iter()
-            .map(|(a, b)| format!("{a} {b}\n"))
-            .collect::<Vec<_>>().join("");
+            res?.with_cors(&cors)
+        })
+        .get_async("/globals", |_req, _env| async move {
+            let cors = Cors::default()
+                .with_origins(["*"])
+                .with_allowed_headers(["*"]);
+            let globals = Interpreter::new()
+                .init_globals()
+                .variables
+                .iter()
+                .map(|(a, b)| format!("{a} {b}\n"))
+                .collect::<Vec<_>>()
+                .join("");
 
-        let res = Response::ok(globals);
+            let res = Response::ok(globals);
 
-        return res?.with_cors(&cors);
-    }
-
-    let res = Response::ok(run(json.code, json.debug));
-
-    res?.with_cors(&cors)
+            res?.with_cors(&cors)
+        })
+        .run(req, env).await
 }
 
 pub fn run(contents: String, debug: bool) -> String {
