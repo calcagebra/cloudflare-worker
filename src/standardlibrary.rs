@@ -1,3 +1,4 @@
+use image::RgbImage;
 use plotters::backend::BitMapBackend;
 use plotters::chart::ChartBuilder;
 use plotters::drawing::IntoDrawingArea;
@@ -5,11 +6,8 @@ use plotters::element::PathElement;
 use plotters::series::LineSeries;
 use plotters::style::{full_palette::*, Color, IntoFont, MAGENTA};
 use rand::{seq::SliceRandom, thread_rng};
-use std::io::{stdin, stdout, Write};
-use viuer::{print_from_file, Config};
-
+use std::io::{stdin, stdout, Cursor, Write};
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     data::{sizedset::SizedSet, Data},
@@ -180,63 +178,72 @@ impl StandardLibrary {
                     YELLOW_900, MAGENTA,
                 ];
 
-                let start = SystemTime::now();
-                let duration = start.duration_since(UNIX_EPOCH).unwrap().as_millis();
-                let name = format!("graph-output-{duration}.png");
+                let mut buffer = vec![0; 640 * 480 * 3];
 
-                let root = BitMapBackend::new(&name, (640, 480)).into_drawing_area();
+                {
+                    let root =
+                        BitMapBackend::with_buffer(&mut buffer, (640, 480)).into_drawing_area();
 
-                root.fill(&WHITE).unwrap();
+                    root.fill(&WHITE).unwrap();
 
-                let mut chart = ChartBuilder::on(&root)
-                    .caption("Graph output", ("sans-serif", 20).into_font())
-                    .margin(5)
-                    .x_label_area_size(30)
-                    .y_label_area_size(30)
-                    .build_cartesian_2d(-1f32..1f32, -1f32..1f32)
-                    .unwrap();
+                    let mut chart = ChartBuilder::on(&root)
+                        .caption("Graph output", ("sans-serif", 20).into_font())
+                        .margin(5)
+                        .x_label_area_size(30)
+                        .y_label_area_size(30)
+                        .build_cartesian_2d(-1f32..1f32, -1f32..1f32)
+                        .unwrap();
 
-                chart.configure_mesh().draw().unwrap();
+                    chart.configure_mesh().draw().unwrap();
 
-                for z in x {
-                    if let Data::Function(f) = functions.get(&z.to_function()).unwrap() {
-                        let style = colors.choose(&mut thread_rng()).unwrap_or(&RED);
+                    for z in x {
+                        if let Data::Function(f) = functions.get(&z.to_function()).unwrap() {
+                            let style = colors.choose(&mut thread_rng()).unwrap_or(&RED);
 
-                        chart
-                            .draw_series(LineSeries::new(
-                                (-50..=50).map(|x| x as f32 / 50.0).map(|x| {
-                                    variables.insert(
-                                        f.args.first().unwrap().to_string(),
-                                        Data::Number(x),
-                                    );
-                                    (
-                                        x,
-                                        Interpreter::eval_expression(
-                                            &f.expr, &variables, &functions, &std.map,
+                            chart
+                                .draw_series(LineSeries::new(
+                                    (-50..=50).map(|x| x as f32 / 50.0).map(|x| {
+                                        variables.insert(
+                                            f.args.first().unwrap().to_string(),
+                                            Data::Number(x),
+                                        );
+                                        (
+                                            x,
+                                            Interpreter::eval_expression(
+                                                &f.expr, &variables, &functions, &std.map,
+                                            )
+                                            .to_number(),
                                         )
-                                        .to_number(),
-                                    )
-                                }),
-                                &style,
-                            ))
-                            .unwrap()
-                            .label(format!("{f}"))
-                            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], *style));
+                                    }),
+                                    &style,
+                                ))
+                                .unwrap()
+                                .label(format!("{f}"))
+                                .legend(|(x, y)| {
+                                    PathElement::new(vec![(x, y), (x + 20, y)], *style)
+                                });
+                        }
                     }
+
+                    chart
+                        .configure_series_labels()
+                        .background_style(WHITE.mix(0.8))
+                        .border_style(BLACK)
+                        .draw()
+                        .unwrap();
+
+                    root.present().unwrap();
                 }
 
-                chart
-                    .configure_series_labels()
-                    .background_style(WHITE.mix(0.8))
-                    .border_style(BLACK)
-                    .draw()
+                let image = RgbImage::from_raw(640, 480, buffer).unwrap();
+
+                let mut bytes = vec![];
+
+                image
+                    .write_to(&mut Cursor::new(&mut bytes), image::ImageFormat::WebP)
                     .unwrap();
 
-                root.present().unwrap();
-
-                let conf = Config::default();
-
-                let _ = print_from_file(&name, &conf);
+                println!("{bytes:?}");
 
                 Data::default()
             });
