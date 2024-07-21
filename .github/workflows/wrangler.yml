@@ -3,7 +3,7 @@ name: Deploy
 on:
   push:
     branches:
-      - wasm
+      - main
 
 jobs:
   deploy:
