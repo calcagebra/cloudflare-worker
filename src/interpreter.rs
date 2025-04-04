@@ -1,210 +1,369 @@
-use std::{
-    collections::HashMap,
-    f32::consts::{E, PI},
-};
+use std::{collections::HashMap, ops::Rem};
 
 use crate::{
-    ast::{Ast, Expression},
-    data::{function::Function, sizedset::SizedSet, unsizedset::UnsizedSet, Data},
-    standardlibrary::StandardLibrary,
-    token::Token,
+	ast::{AstNode, Expression},
+	standardlibrary::{
+		complex_call, is_complex_standard_function, is_simple_standard_function, simple_call,
+	},
+	token::Token,
+	types::{Number, NumberType},
 };
 
-pub type Variables = HashMap<String, Data>;
-pub type Functions = HashMap<String, Data>;
-pub type Std = HashMap<String, StdFunction>;
-pub type StdFunction = fn(Vec<Data>, Variables, Functions, StandardLibrary) -> Data;
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Interpreter {
-    pub variables: Variables,
-    functions: Functions,
-    std: StandardLibrary,
+	pub globals: HashMap<String, Number>,
+	pub functions: HashMap<String, Function>,
 }
 
 impl Interpreter {
-    pub fn new() -> Self {
-        Self {
-            variables: HashMap::new(),
-            functions: HashMap::new(),
-            std: StandardLibrary::new(),
-        }
-    }
+	pub fn new() -> Self {
+		Self {
+			globals: HashMap::new(),
+			functions: HashMap::new(),
+		}
+	}
 
-    pub fn init_globals(&mut self) -> &Self {
-        [("π", PI), ("pi", PI), ("e", E)]
-            .map(|(k, v)| self.variables.insert(k.to_string(), Data::Number(v)));
+	pub fn interpret(&mut self, ast: Vec<AstNode>) {
+		for node in ast {
+			self.interpret_node(node);
+		}
+	}
 
-        self
-    }
+	pub fn interpret_node(&mut self, node: AstNode) {
+		match node {
+			AstNode::Import(_) => todo!(),
+			AstNode::Assignment((name, numbertype), expr) => {
+				let number = self.interpret_expression(&expr);
 
-    pub fn run(&mut self, ast: Vec<Ast>) {
-        self.std.init_std();
-        self.init_globals();
-        for node in ast {
-            match node {
-                Ast::Assignment(name, expr) => {
-                    let r = Interpreter::eval_expression(
-                        &expr,
-                        &self.variables,
-                        &self.functions,
-                        &self.std.map,
-                    );
-                    self.variables.insert(name.to_string(), r);
-                }
-                Ast::FunctionCall(i, exprs) => {
-                    if self.std.map.contains_key(&i) {
-                        let f = self.std.map.get(&i).unwrap();
-                        f(
-                            exprs
-                                .iter()
-                                .map(|x| {
-                                    Interpreter::eval_expression(
-                                        x,
-                                        &self.variables,
-                                        &self.functions,
-                                        &self.std.map,
-                                    )
-                                })
-                                .collect(),
-                            self.variables.clone(),
-                            self.functions.clone(),
-                            self.std.clone(),
-                        );
-                    } else if let Data::Function(f) = self.functions.get(&i).unwrap().clone() {
-                        let variables = self.variables.clone();
+				if number.r#type() != numbertype {
+					// TODO: proper errors
+					panic!("type mismatch")
+				}
 
-                        for (i, arg) in f.args.iter().enumerate() {
-                            let r = Interpreter::eval_expression(
-                                &exprs[i],
-                                &self.variables,
-                                &self.functions,
-                                &self.std.map,
-                            );
-                            self.variables.insert(arg.to_string(), r);
-                        }
+				self.globals.insert(name, number);
+			}
+			AstNode::FunctionCall(name, exprs) => {
+				// A simple standard function is a term used to define a function which
+				// takes only Number as arguments opposed to say function name
+				if is_simple_standard_function(&name) {
+					let mut args = vec![];
 
-                        Interpreter::eval_expression(
-                            &f.expr,
-                            &self.variables,
-                            &self.functions,
-                            &self.std.map,
-                        );
+					for expr in exprs {
+						args.push(self.interpret_expression(&expr))
+					}
 
-                        self.variables = variables;
-                    }
-                }
-                Ast::FunctionDeclaration(name, args, expr) => {
-                    self.functions.insert(
-                        name.to_string(),
-                        Data::Function(Function::new(name, args.to_vec(), expr.clone())),
-                    );
-                }
-            }
-        }
-    }
+					simple_call(&name, args);
+				}
+				// A complex function is one which may take any combination of argument and types
+				// currently only graph is a complex function
+				else if is_complex_standard_function(&name) {
+					complex_call(&name, exprs, self);
+				} else if self.functions.contains_key(&name) {
+					let f: Function = self.functions.get(&name).unwrap().clone();
+					let globals = self.globals.clone();
 
-    pub fn eval_expression(
-        expr: &Expression,
-        variables: &Variables,
-        functions: &Functions,
-        std: &Std,
-    ) -> Data {
-        match expr {
-            Expression::Binary(lhs, op, rhs) => {
-                let dlhs = Interpreter::eval_expression(lhs, variables, functions, std);
-                let drhs = Interpreter::eval_expression(rhs, variables, functions, std);
-                match op {
-                    Token::Add => dlhs + drhs,
-                    Token::Sub => dlhs - drhs,
-                    Token::Mul => dlhs * drhs,
-                    Token::Div => dlhs / drhs,
-                    Token::Mod => dlhs % drhs,
-                    Token::Pow => Data::Number(dlhs.to_number().powf(drhs.to_number())),
-                    Token::IsEq => Data::Bool(dlhs == drhs),
-                    Token::Gt => Data::Bool(dlhs > drhs),
-                    Token::Lt => Data::Bool(dlhs < drhs),
-                    Token::GtEq => Data::Bool(dlhs >= drhs),
-                    Token::LtEq => Data::Bool(dlhs <= drhs),
-                    _ => unreachable!(),
-                }
-            }
-            Expression::Abs(operand) => {
-                let data = Interpreter::eval_expression(operand, variables, functions, std);
+					for (i, (arg, numbertype)) in f.params.iter().enumerate() {
+						let r = self.interpret_expression(&exprs[i]);
 
-                Data::Number(match data {
-                    Data::Number(n) => n.abs(),
-                    Data::Bool(b) => b as u8 as f32,
-                    Data::SizedSet(s) => s.values.len() as f32,
-                    Data::UnsizedSet(x) => x.len(variables, functions, std),
-                    _ => unimplemented!(),
-                })
-            }
-            Expression::Branched(condition, a, b) => {
-                if Interpreter::eval_expression(condition, variables, functions, std).to_bool() {
-                    Interpreter::eval_expression(a, variables, functions, std)
-                } else {
-                    Interpreter::eval_expression(b, variables, functions, std)
-                }
-            }
-            Expression::Identifier(ident) => {
-                if variables.get(ident).is_some() {
-                    variables.get(ident).unwrap().to_owned()
-                } else if std.get(ident).is_some() {
-                    Data::Function(Function::new(ident.to_string(), vec![], Expression::Undefined))
-                } else if functions.get(ident).is_some() {
-                    functions.get(ident).unwrap().to_owned()
-                } else {
-                    panic!("attempt to access value of not assigned identifier `{ident}`")
-                }
-            }
-            Expression::Number(n) => Data::Number(*n),
-            Expression::SizedSet(s) => Data::SizedSet(SizedSet::new(
-                s.iter()
-                    .map(|f| Interpreter::eval_expression(f, variables, functions, std))
-                    .collect(),
-            )),
-            Expression::UnsizedSet(idents, conditions) => {
-                Data::UnsizedSet(UnsizedSet::new(idents.to_vec(), conditions.to_vec()))
-            }
-            Expression::FunctionCall(i, exprs) => {
-                if std.get(i).is_some() {
-                    let f = std.get(i).unwrap();
-                    return f(
-                        exprs
-                            .iter()
-                            .map(|x| Interpreter::eval_expression(x, variables, functions, std))
-                            .collect(),
-                        variables.clone(),
-                        functions.clone(),
-                        StandardLibrary::from_map(std.clone()),
-                    );
-                } else if let Data::Function(f) = functions.get(i).unwrap().clone() {
-                    let mut variables = variables.clone();
+						if r.r#type() != *numbertype {
+							// TODO: error handling
+							panic!("type mismatch")
+						}
 
-                    for (i, arg) in f.args.iter().enumerate() {
-                        let r = Interpreter::eval_expression(&exprs[i], &variables, functions, std);
-                        variables.insert(arg.to_string(), r);
-                    }
+						self.globals.insert(arg.to_string(), r);
+					}
 
-                    return Interpreter::eval_expression(&f.expr, &variables, functions, std);
-                }
-                unreachable!()
-            }
-            Expression::Differentiate(ident) => {
-                let data = Interpreter::eval_expression(ident, variables, functions, std);
+					self.interpret_expression(&f.code);
 
-                match data {
-                    Data::Function(f) => {
-                        let r = f.expr.differentiate(&f.args);
-                        Data::Function(Function::new(f.name, f.args, r))
-                    }
-                    _ => unreachable!(),
-                }
-            }
-            Expression::Undefined => {
-                panic!("reached undefined expression evaluation")
-            }
-        }
-    }
+					self.globals = globals;
+				}
+			}
+			AstNode::FunctionDeclaration(name, items, number_type, expr) => {
+				self
+					.functions
+					.insert(name.clone(), Function::new(name, items, number_type, expr));
+			}
+		}
+	}
+
+	pub fn interpret_expression(&mut self, expr: &Expression) -> Number {
+		match expr {
+			Expression::Abs(expression) => {
+				let number = self.interpret_expression(expression);
+
+				let numbertype = number.r#type();
+
+				match numbertype {
+					NumberType::Int => Number::Int(number.int().abs()),
+					NumberType::Real => Number::Real(number.real().abs()),
+					NumberType::Complex => {
+						Number::Real(number.array().iter().map(|f| f * f).sum::<f32>().sqrt())
+					}
+				}
+			}
+			Expression::Binary(lhs, token, rhs) => {
+				let lhd = self.interpret_expression(lhs);
+
+				let rhd = self.interpret_expression(rhs);
+
+				match token {
+					Token::Add => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => return Number::Int(a + b),
+						(Number::Int(a), Number::Real(b)) | (Number::Real(b), Number::Int(a)) => {
+							return Number::Real(a as f32 + b);
+						}
+						(Number::Real(a), Number::Real(b)) => return Number::Real(a + b),
+						(Number::Int(n), Number::Complex(a, b)) | (Number::Complex(a, b), Number::Int(n)) => {
+							Number::Complex(a + (n as f32), b)
+						}
+						(Number::Real(n), Number::Complex(a, b)) | (Number::Complex(a, b), Number::Real(n)) => {
+							Number::Complex(a + n, b)
+						}
+						(Number::Complex(a, b), Number::Complex(c, d)) => Number::Complex(a + c, b + d),
+					},
+					Token::Sub => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => return Number::Int(a - b),
+						(Number::Int(a), Number::Real(b)) => {
+							return Number::Real(a as f32 - b);
+						}
+						(Number::Real(b), Number::Int(a)) => {
+							return Number::Real(b - a as f32);
+						}
+						(Number::Real(a), Number::Real(b)) => return Number::Real(a - b),
+						(Number::Int(n), Number::Complex(a, b)) => Number::Complex(-a + (n as f32), -b),
+						(Number::Complex(a, b), Number::Int(n)) => Number::Complex(a - (n as f32), b),
+						(Number::Real(n), Number::Complex(a, b)) => Number::Complex(-a + n, -b),
+						(Number::Complex(a, b), Number::Real(n)) => Number::Complex(a - n, b),
+						(Number::Complex(a, b), Number::Complex(c, d)) => Number::Complex(a - c, b - d),
+					},
+					Token::Mul => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => return Number::Int(a * b),
+						(Number::Int(a), Number::Real(b)) | (Number::Real(b), Number::Int(a)) => {
+							return Number::Real(a as f32 * b);
+						}
+						(Number::Real(a), Number::Real(b)) => return Number::Real(a * b),
+						(Number::Int(n), Number::Complex(a, b)) | (Number::Complex(a, b), Number::Int(n)) => {
+							Number::Complex(a * (n as f32), b * (n as f32))
+						}
+						(Number::Real(n), Number::Complex(a, b)) | (Number::Complex(a, b), Number::Real(n)) => {
+							Number::Complex(a * n, b * n)
+						}
+						(Number::Complex(a, b), Number::Complex(c, d)) => {
+							Number::Complex(a * c - b * d, a * d + b * c)
+						}
+					},
+					Token::Div => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => return Number::Int(a / b),
+						(Number::Int(a), Number::Real(b)) => {
+							return Number::Real(a as f32 / b);
+						}
+						(Number::Real(b), Number::Int(a)) => {
+							return Number::Real(b / a as f32);
+						}
+						(Number::Real(a), Number::Real(b)) => return Number::Real(a / b),
+						(Number::Int(n), Number::Complex(a, b)) => Number::Complex(
+							(n as f32) * a / (a * a + b * b),
+							-(n as f32) * b / (a * a + b * b),
+						),
+						(Number::Complex(a, b), Number::Int(n)) => {
+							Number::Complex(a / (n as f32), b / (n as f32))
+						}
+						(Number::Real(n), Number::Complex(a, b)) => {
+							Number::Complex(n * a / (a * a + b * b), -n * b / (a * a + b * b))
+						}
+						(Number::Complex(a, b), Number::Real(n)) => Number::Complex(a / n, b / n),
+						(Number::Complex(a, b), Number::Complex(c, d)) => Number::Complex(
+							(a * c + b * d) / (c * c + d * d),
+							(b * c - a * d) / (c * c + d * d),
+						),
+					},
+					Token::Pow => {
+						match (lhd, rhd) {
+							(Number::Int(a), Number::Int(b)) => {
+								// TODO: Handle negative errors
+								return Number::Int(a.pow(b.try_into().unwrap()));
+							}
+							(Number::Int(a), Number::Real(b)) => {
+								return Number::Real((a as f32).powf(b));
+							}
+							(Number::Real(a), Number::Int(b)) => {
+								return Number::Real(a.powf(b as f32));
+							}
+							(Number::Real(a), Number::Real(b)) => {
+								return Number::Real(a.powf(b));
+							}
+							(Number::Complex(a, b), Number::Int(n)) => {
+								let modulus = (a * a + b * b).sqrt();
+
+								let argument = (b / a).atan();
+
+								return Number::Complex(
+									modulus.powf(n as f32) * (n as f32 * argument).cos(),
+									modulus.powf(n as f32) * (n as f32 * argument).sin(),
+								)
+							}
+							_ => unimplemented!(),
+						}
+					}
+					Token::Rem => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => return Number::Int(a.rem(b)),
+						(Number::Int(a), Number::Real(b)) => {
+							return Number::Real((a as f32).rem(b));
+						}
+						(Number::Real(a), Number::Int(b)) => {
+							return Number::Real((a).rem(b as f32));
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Real(a.rem(b));
+						}
+						_ => unimplemented!(),
+					},
+					Token::IsEq => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => {
+							return Number::Int((a == b) as i32);
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Int((a == b) as i32);
+						}
+						(Number::Complex(a, b), Number::Complex(c, d)) => {
+							return Number::Int((a == c && b == d) as i32)
+						}
+						_ => unimplemented!(),
+					},
+					Token::NEq => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => {
+							return Number::Int((a != b) as i32);
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Int((a != b) as i32);
+						}
+						(Number::Complex(a, b), Number::Complex(c, d)) => {
+							return Number::Int((a != c && b != d) as i32)
+						}
+						_ => unimplemented!(),
+					},
+					Token::Gt => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => {
+							return Number::Int((a > b) as i32);
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Int((a > b) as i32);
+						}
+						_ => unimplemented!(),
+					},
+					Token::GtEq => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => {
+							return Number::Int((a >= b) as i32);
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Int((a >= b) as i32);
+						}
+						_ => unimplemented!(),
+					},
+					Token::Lt => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => {
+							return Number::Int((a < b) as i32);
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Int((a < b) as i32);
+						}
+						_ => unimplemented!(),
+					},
+					Token::LtEq => match (lhd, rhd) {
+						(Number::Int(a), Number::Int(b)) => {
+							return Number::Int((a <= b) as i32);
+						}
+						(Number::Real(a), Number::Real(b)) => {
+							return Number::Int((a <= b) as i32);
+						}
+						_ => unimplemented!(),
+					},
+					_ => unreachable!(),
+				}
+			}
+			Expression::Branched(condition, then, otherwise) => {
+				let condition = self.interpret_expression(condition).real();
+
+				if condition != 0.0 {
+					self.interpret_expression(then)
+				} else {
+					self.interpret_expression(otherwise)
+				}
+			}
+			Expression::Identifier(name) => {
+				// TODO: Error handling for when name does not
+				*self.globals.get(name).unwrap()
+			}
+			Expression::Real(f) => Number::Real(*f),
+			Expression::Integer(i) => Number::Int(*i),
+			Expression::Complex(a, b) => Number::Complex(
+				self.interpret_expression(a).real(),
+				self.interpret_expression(b).real(),
+			),
+			Expression::FunctionCall(name, exprs) => {
+				// A simple standard function is a term used to define a function which
+				// takes only Number as arguments opposed to say function name
+				if is_simple_standard_function(&name) {
+					let mut args = vec![];
+
+					for expr in exprs {
+						args.push(self.interpret_expression(&expr))
+					}
+
+					return simple_call(&name, args);
+				}
+				// A complex function is one which may take any combination of argument and types
+				// currently only graph is a complex function
+				else if is_complex_standard_function(&name) {
+					return complex_call(&name, exprs.to_vec(), self);
+				} else if self.functions.contains_key(name) {
+					let f = self.functions.get(name).unwrap().clone();
+					let globals = self.globals.clone();
+
+					for (i, (arg, numbertype)) in f.params.iter().enumerate() {
+						let r = self.interpret_expression(&exprs[i]);
+
+						if r.r#type() != *numbertype {
+							// TODO: error handling
+							panic!("type mismatch")
+						}
+
+						self.globals.insert(arg.to_string(), r);
+					}
+
+					let r = self.interpret_expression(&f.code);
+
+					self.globals = globals;
+
+					return r;
+				}
+
+				unreachable!()
+			}
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct Function {
+	pub name: String,
+	pub params: Vec<(String, NumberType)>,
+	pub return_type: NumberType,
+	pub code: Expression,
+}
+
+impl Function {
+	pub fn new(
+		name: String,
+		params: Vec<(String, NumberType)>,
+		return_type: NumberType,
+		code: Expression,
+	) -> Self {
+		Self {
+			name,
+			params,
+			return_type,
+			code,
+		}
+	}
 }

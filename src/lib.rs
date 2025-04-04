@@ -1,17 +1,18 @@
 #![feature(internal_output_capture)]
 mod ast;
-mod data;
-mod interpreter;
 mod lexer;
 mod parser;
 mod standardlibrary;
 mod token;
+mod errors;
+mod interpreter;
+mod types;
 
 use std::sync::Arc;
 
 use lexer::Lexer;
 
-use crate::{interpreter::Interpreter, parser::Parser};
+use crate::{interpreter::Interpreter, parser::Parser, errors::ErrorReporter};
 use serde::Deserialize;
 
 use worker::*;
@@ -35,24 +36,7 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             let res = Response::ok(run(json.code, json.debug));
 
             res?.with_cors(&cors)
-        })
-        .get_async("/globals", |_req, _env| async move {
-            let cors = Cors::default()
-                .with_origins(["*"])
-                .with_allowed_headers(["*"]);
-            let globals = Interpreter::new()
-                .init_globals()
-                .variables
-                .iter()
-                .map(|(a, b)| format!("{a} {b}\n"))
-                .collect::<Vec<_>>()
-                .join("");
-
-            let res = Response::ok(globals);
-
-            res?.with_cors(&cors)
-        })
-        .run(req, env).await
+        }).run(req, env).await
 }
 
 pub fn run(contents: String, debug: bool) -> String {
@@ -62,11 +46,11 @@ pub fn run(contents: String, debug: bool) -> String {
     if debug {
         println!("{tokens:?}")
     }
-    let ast = Parser::new(tokens).ast();
+    let ast = Parser::new("", tokens, ErrorReporter::new()).ast();
     if debug {
         println!("{ast:?}")
     }
-    Interpreter::new().run(ast);
+    Interpreter::new().interpret(ast);
 
     let captured = std::io::set_output_capture(None);
     let captured = captured.unwrap();
