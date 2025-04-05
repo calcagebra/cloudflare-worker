@@ -1,18 +1,18 @@
 #![feature(internal_output_capture)]
 mod ast;
+mod errors;
+mod interpreter;
 mod lexer;
 mod parser;
 mod standardlibrary;
 mod token;
-mod errors;
-mod interpreter;
 mod types;
 
 use std::sync::Arc;
 
 use lexer::Lexer;
 
-use crate::{interpreter::Interpreter, parser::Parser, errors::ErrorReporter};
+use crate::{errors::ErrorReporter, interpreter::Interpreter, parser::Parser};
 use serde::Deserialize;
 
 use worker::*;
@@ -20,7 +20,7 @@ use worker::*;
 #[derive(Debug, Deserialize)]
 pub struct RequestBody {
     code: String,
-    debug: bool
+    debug: bool,
 }
 
 #[event(fetch)]
@@ -36,7 +36,9 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
             let res = Response::ok(run(json.code, json.debug));
 
             res?.with_cors(&cors)
-        }).run(req, env).await
+        })
+        .run(req, env)
+        .await
 }
 
 pub fn run(contents: String, debug: bool) -> String {
