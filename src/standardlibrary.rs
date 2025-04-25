@@ -11,154 +11,154 @@ use std::io::{Write, stdin, stdout};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn internal_type_map(f: &str) -> (Vec<NumberType>, NumberType) {
-    match f {
-        "read" => (vec![], NumberType::Real),
-        "real" => (vec![NumberType::Int], NumberType::Real),
-        "int" => (vec![NumberType::Real], NumberType::Int),
-        "print" | "round" | "ceil" | "floor" | "ln" | "log10" | "sin" | "cos" | "tan" | "sqrt"
-        | "cbrt" | "graph" => (vec![NumberType::Real], NumberType::Real),
-        "log" | "nrt" => (vec![NumberType::Real, NumberType::Real], NumberType::Real),
-        _ => unimplemented!("type map not implemented for: {f}"),
-    }
+	match f {
+		"read" => (vec![], NumberType::Real),
+		"real" => (vec![NumberType::Int], NumberType::Real),
+		"int" => (vec![NumberType::Real], NumberType::Int),
+		"print" | "round" | "ceil" | "floor" | "ln" | "log10" | "sin" | "cos" | "tan" | "sqrt"
+		| "cbrt" | "graph" => (vec![NumberType::Real], NumberType::Real),
+		"log" | "nrt" => (vec![NumberType::Real, NumberType::Real], NumberType::Real),
+		_ => unimplemented!("type map not implemented for: {f}"),
+	}
 }
 
 pub fn is_simple_standard_function(f: &str) -> bool {
-    [
-        "print", "read", "int", "real", "round", "ceil", "floor", "ln", "log10", "log", "sin",
-        "cos", "tan", "sqrt", "cbrt", "nrt",
-    ]
-    .contains(&f)
+	[
+		"print", "read", "int", "real", "round", "ceil", "floor", "ln", "log10", "log", "sin", "cos",
+		"tan", "sqrt", "cbrt", "nrt",
+	]
+	.contains(&f)
 }
 
 pub fn is_complex_standard_function(f: &str) -> bool {
-    ["graph"].contains(&f)
+	["graph"].contains(&f)
 }
 
 pub fn simple_call(f: &str, args: Vec<Number>) -> Number {
-    match f {
-        "print" => print(args),
-        "read" => read(),
-        "int" => int(args),
-        "real" => real(args),
-        "round" => round(args),
-        "ceil" => ceil(args),
-        "floor" => floor(args),
-        "ln" => ln(args),
-        "log10" => log10(args),
-        "log" => log(args),
-        "sin" => sin(args),
-        "cos" => cos(args),
-        "tan" => tan(args),
-        "sqrt" => sqrt(args),
-        "cbrt" => cbrt(args),
-        "nrt" => nrt(args),
-        _ => unreachable!(),
-    }
+	match f {
+		"print" => print(args),
+		"read" => read(),
+		"int" => int(args),
+		"real" => real(args),
+		"round" => round(args),
+		"ceil" => ceil(args),
+		"floor" => floor(args),
+		"ln" => ln(args),
+		"log10" => log10(args),
+		"log" => log(args),
+		"sin" => sin(args),
+		"cos" => cos(args),
+		"tan" => tan(args),
+		"sqrt" => sqrt(args),
+		"cbrt" => cbrt(args),
+		"nrt" => nrt(args),
+		_ => unreachable!(),
+	}
 }
 
 pub fn complex_call(f: &str, args: Vec<Expression>, interpreter: &mut Interpreter) -> Number {
-    match f {
-        "graph" => graph(args, interpreter),
-        _ => unreachable!(),
-    }
+	match f {
+		"graph" => graph(args, interpreter),
+		_ => unreachable!(),
+	}
 }
 
 // IO
 pub fn print(a: Vec<Number>) -> Number {
-    for b in a {
-        println!("{}", b);
-    }
-    Number::Real(0.0)
+	for b in a {
+		println!("{}", b);
+	}
+	Number::Real(0.0)
 }
 
 pub fn read() -> Number {
-    print!("Enter number: ");
-    stdout().flush().unwrap();
-    let mut buf = String::new();
+	print!("Enter number: ");
+	stdout().flush().unwrap();
+	let mut buf = String::new();
 
-    stdin().read_line(&mut buf).unwrap();
+	stdin().read_line(&mut buf).unwrap();
 
-    Number::Real(buf.trim_end().parse::<f32>().unwrap())
+	Number::Real(buf.trim_end().parse::<f32>().unwrap())
 }
 
 // TYPES
 pub fn int(a: Vec<Number>) -> Number {
-    Number::Int(a[0].int())
+	Number::Int(a[0].int())
 }
 
 pub fn real(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real())
+	Number::Real(a[0].real())
 }
 
 // MATH
 pub fn round(a: Vec<Number>) -> Number {
-    match a[0].r#type() {
-        NumberType::Int => Number::Int(a[0].real().round() as i32),
-        NumberType::Real => Number::Real(a[0].real().round()),
-        _ => unimplemented!(),
-    }
+	match a[0].r#type() {
+		NumberType::Int => Number::Int(a[0].real().round() as i32),
+		NumberType::Real => Number::Real(a[0].real().round()),
+		_ => unimplemented!(),
+	}
 }
 
 pub fn ceil(a: Vec<Number>) -> Number {
-    match a[0].r#type() {
-        NumberType::Int => Number::Int(a[0].real().ceil() as i32),
-        NumberType::Real => Number::Real(a[0].real().ceil()),
-        _ => unimplemented!(),
-    }
+	match a[0].r#type() {
+		NumberType::Int => Number::Int(a[0].real().ceil() as i32),
+		NumberType::Real => Number::Real(a[0].real().ceil()),
+		_ => unimplemented!(),
+	}
 }
 
 pub fn floor(a: Vec<Number>) -> Number {
-    match a[0].r#type() {
-        NumberType::Int => Number::Int(a[0].real().floor() as i32),
-        NumberType::Real => Number::Real(a[0].real().floor()),
-        _ => unimplemented!(),
-    }
+	match a[0].r#type() {
+		NumberType::Int => Number::Int(a[0].real().floor() as i32),
+		NumberType::Real => Number::Real(a[0].real().floor()),
+		_ => unimplemented!(),
+	}
 }
 
 pub fn ln(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().ln())
+	Number::Real(a[0].real().ln())
 }
 
 pub fn log10(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().log10())
+	Number::Real(a[0].real().log10())
 }
 
 pub fn log(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().log(a[1].real()))
+	Number::Real(a[0].real().log(a[1].real()))
 }
 
 pub fn sin(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().sin())
+	Number::Real(a[0].real().sin())
 }
 
 pub fn cos(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().cos())
+	Number::Real(a[0].real().cos())
 }
 
 pub fn tan(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().tan())
+	Number::Real(a[0].real().tan())
 }
 
 pub fn sqrt(a: Vec<Number>) -> Number {
-    match a[0] {
-        Number::Int(..) | Number::Real(..) => Number::Real(a[0].real().sqrt()),
-        Number::Complex(a, b) => {
-            let r = (a * a + b * b).sqrt();
+	match a[0] {
+		Number::Int(..) | Number::Real(..) => Number::Real(a[0].real().sqrt()),
+		Number::Complex(a, b) => {
+			let r = (a * a + b * b).sqrt();
 
-            let zr = ((a + r) * (a + r) + b * b).sqrt();
+			let zr = ((a + r) * (a + r) + b * b).sqrt();
 
-            Number::Complex(r.sqrt() * (a + r) / zr, r.sqrt() * b / zr)
-        }
-        _ => unimplemented!(),
-    }
+			Number::Complex(r.sqrt() * (a + r) / zr, r.sqrt() * b / zr)
+		}
+		_ => unimplemented!(),
+	}
 }
 
 pub fn cbrt(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().cbrt())
+	Number::Real(a[0].real().cbrt())
 }
 
 pub fn nrt(a: Vec<Number>) -> Number {
-    Number::Real(a[0].real().powf(1.0 / a[1].real()))
+	Number::Real(a[0].real().powf(1.0 / a[1].real()))
 }
 
 pub fn graph(f: Vec<Expression>, interpreter: &mut Interpreter) -> Number {
