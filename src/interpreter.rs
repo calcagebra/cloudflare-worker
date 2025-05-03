@@ -17,6 +17,7 @@ use crate::{
 pub struct Interpreter {
 	pub globals: HashMap<String, Number>,
 	pub functions: HashMap<String, Function>,
+	pub graph_buffers: Vec<Vec<u8>>,
 }
 
 impl Interpreter {
@@ -24,6 +25,7 @@ impl Interpreter {
 		Self {
 			globals: HashMap::new(),
 			functions: HashMap::new(),
+			graph_buffers: vec![]
 		}
 	}
 
@@ -40,12 +42,14 @@ impl Interpreter {
 		}
 	}
 
-	pub fn interpret(&mut self, ast: Vec<AstNode>) {
+	pub fn interpret(&mut self, ast: Vec<AstNode>) -> &Self {
 		self.setup();
 
 		for node in ast {
 			self.interpret_node(node);
 		}
+
+		self
 	}
 
 	pub fn interpret_node(&mut self, node: AstNode) {
@@ -79,7 +83,9 @@ impl Interpreter {
 				// A complex function is one which may take any combination of argument and types
 				// currently only graph is a complex function
 				else if is_complex_standard_function(&name) {
-					complex_call(&name, exprs, self);
+					let graph_buffer = complex_call(&name, exprs, self);
+
+					self.graph_buffers.push(graph_buffer);
 				} else if self.functions.contains_key(&name) {
 					let f: Function = self.functions.get(&name).unwrap().clone();
 					let globals = self.globals.clone();
@@ -419,7 +425,9 @@ impl Interpreter {
 				// A complex function is one which may take any combination of argument and types
 				// currently only graph is a complex function
 				else if is_complex_standard_function(&name) {
-					return complex_call(&name, exprs.to_vec(), self);
+					let graph_buffer = complex_call(&name, exprs.to_vec(), self);
+					
+					self.graph_buffers.push(graph_buffer);
 				} else if self.functions.contains_key(name) {
 					let f = self.functions.get(name).unwrap().clone();
 					let globals = self.globals.clone();

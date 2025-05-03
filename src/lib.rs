@@ -33,7 +33,21 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 				.with_origins(["*"])
 				.with_allowed_headers(["*"]);
 			let json = req.json::<RequestBody>().await.unwrap();
-			let res = Response::ok(run(json.code, json.debug));
+
+			let (output, graphs) = run(json.code, json.debug);
+
+			let res = Response::ok(format!(
+				"OUTPUT:{output}\nGRAPHS:{}",
+				graphs
+					.iter()
+					.map(|f| f
+						.iter()
+						.map(|n| n.to_string())
+						.collect::<Vec<String>>()
+						.join(" "))
+					.collect::<Vec<String>>()
+					.join("NEXT_GRAPH")
+			));
 
 			res?.with_cors(&cors)
 		})
@@ -41,7 +55,7 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 		.await
 }
 
-pub fn run(contents: String, debug: bool) -> String {
+pub fn run(contents: String, debug: bool) -> (String, Vec<Vec<u8>>) {
 	std::io::set_output_capture(Some(Default::default()));
 
 	let tokens = Lexer::new(&contents).tokens();
@@ -52,11 +66,11 @@ pub fn run(contents: String, debug: bool) -> String {
 	if debug {
 		println!("{ast:?}")
 	}
-	Interpreter::new().interpret(ast);
+	let graph_buffers = Interpreter::new().interpret(ast).graph_buffers.to_vec();
 
 	let captured = std::io::set_output_capture(None);
 	let captured = captured.unwrap();
 	let captured = Arc::try_unwrap(captured).unwrap();
 	let captured = captured.into_inner().unwrap();
-	String::from_utf8(captured).unwrap()
+	(String::from_utf8(captured).unwrap(), graph_buffers)
 }

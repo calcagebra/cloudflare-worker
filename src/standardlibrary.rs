@@ -8,7 +8,6 @@ use plotters::element::PathElement;
 use plotters::series::LineSeries;
 use plotters::style::{Color, IntoFont, full_palette::*};
 use std::io::{Write, stdin, stdout};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 pub fn internal_type_map(f: &str) -> (Vec<NumberType>, NumberType) {
 	match f {
@@ -56,7 +55,7 @@ pub fn simple_call(f: &str, args: Vec<Number>) -> Number {
 	}
 }
 
-pub fn complex_call(f: &str, args: Vec<Expression>, interpreter: &mut Interpreter) -> Number {
+pub fn complex_call(f: &str, args: Vec<Expression>, interpreter: &mut Interpreter) -> Vec<u8> {
 	match f {
 		"graph" => graph(args, interpreter),
 		_ => unreachable!(),
@@ -161,13 +160,12 @@ pub fn nrt(a: Vec<Number>) -> Number {
 	Number::Real(a[0].real().powf(1.0 / a[1].real()))
 }
 
-pub fn graph(f: Vec<Expression>, interpreter: &mut Interpreter) -> Number {
-    if let Expression::Identifier(f) = &f[0] {
-        let start = SystemTime::now();
-        let duration = start.duration_since(UNIX_EPOCH).unwrap().as_millis();
-        let mut name = format!("graph-output-{duration}.png");
+pub fn graph(f: Vec<Expression>, interpreter: &mut Interpreter) -> Vec<u8> {
+	let mut buffer = vec![0; (640 as usize) * (480 as usize) * 3];
 
-        let root = BitMapBackend::with_buffer(unsafe { name.as_bytes_mut() }, (640, 480))
+    if let Expression::Identifier(f) = &f[0] {
+
+        let root = BitMapBackend::with_buffer(&mut buffer, (640, 480))
             .into_drawing_area();
 
         root.fill(&WHITE).unwrap();
@@ -213,9 +211,6 @@ pub fn graph(f: Vec<Expression>, interpreter: &mut Interpreter) -> Number {
             .unwrap();
 
         root.present().unwrap();
-
-        return Number::Real(0.0);
     }
-    // TODO: error handle this
-    panic!("expected indentifier")
+	return buffer;
 }
